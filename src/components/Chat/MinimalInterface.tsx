@@ -120,42 +120,47 @@ export const MinimalResponsive: React.FC = () => {
    }
  };
 
- // Démarrer l'enregistrement audio
- const startRecording = async () => {
-   try {
-     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-     audioChunksRef.current = [];
-     
-     mediaRecorderRef.current = new MediaRecorder(stream);
-     mediaRecorderRef.current.ondataavailable = (e) => {
-       if (e.data.size > 0) audioChunksRef.current.push(e.data);
-     };
-     
-     mediaRecorderRef.current.onstop = async () => {
-       const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-       stream.getTracks().forEach(track => track.stop());
-       await transcribeAudio(audioBlob);
-     };
+ // Démarrer l'enregistrement audio// Démarrer l'enregistrement audio
+const startRecording = async () => {
+  try {
+    // 🟢 NOUVEAU : Arrêter le TTS avant de commencer l'enregistrement
+    if (isPlaying || isGenerating) {
+      stop(); // Arrête le TTS en cours
+    }
 
-     mediaRecorderRef.current.start();
-     setIsRecording(true);
-     setRecordingTime(0);
-     
-     // Timer pour l'enregistrement
-     timerRef.current = setInterval(() => {
-       setRecordingTime(prev => {
-         if (prev >= MAX_RECORDING_TIME - 1) {
-           stopRecording();
-           return prev;
-         }
-         return prev + 1;
-       });
-     }, 1000);
-   } catch (error) {
-     console.error('Erreur lors de l\'accès au microphone:', error);
-     alert('Impossible d\'accéder au microphone. Vérifiez vos permissions.');
-   }
- };
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    audioChunksRef.current = [];
+    
+    mediaRecorderRef.current = new MediaRecorder(stream);
+    mediaRecorderRef.current.ondataavailable = (e) => {
+      if (e.data.size > 0) audioChunksRef.current.push(e.data);
+    };
+    
+    mediaRecorderRef.current.onstop = async () => {
+      const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+      stream.getTracks().forEach(track => track.stop());
+      await transcribeAudio(audioBlob);
+    };
+
+    mediaRecorderRef.current.start();
+    setIsRecording(true);
+    setRecordingTime(0);
+    
+    // Timer pour l'enregistrement
+    timerRef.current = setInterval(() => {
+      setRecordingTime(prev => {
+        if (prev >= MAX_RECORDING_TIME - 1) {
+          stopRecording();
+          return prev;
+        }
+        return prev + 1;
+      });
+    }, 1000);
+  } catch (error) {
+    console.error('Erreur lors de l\'accès au microphone:', error);
+    alert('Impossible d\'accéder au microphone. Vérifiez vos permissions.');
+  }
+};
 
  // Arrêter l'enregistrement audio
  const stopRecording = () => {
@@ -177,8 +182,7 @@ export const MinimalResponsive: React.FC = () => {
      const formData = new FormData();
      formData.append('file', audioBlob, 'audio.webm');
      formData.append('model', 'whisper-large-v3');
-     formData.append('language', 'fr');
-
+formData.append('language', 'en'); // Changé de 'fr' à 'en'
      const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
        method: 'POST',
        headers: { 'Authorization': `Bearer ${GROQ_API_KEY}` },
@@ -212,12 +216,12 @@ export const MinimalResponsive: React.FC = () => {
    const config = {
      model: 'claude-sonnet-4-20250514',
      maxTokens: 2000,
-     systemPrompt: 'Adoptez le rôle que les utilisateurs souhaitent que vous adoptiez.',
+     systemPrompt: 'You are a helpful AI assistant. Please respond in English and adopt the role that users want you to take.',
    };
 
    let messageText = finalText;
    if (attachments.length > 0 && !finalText.trim()) {
-     messageText = 'Décrivez cette image';
+     messageText = 'Describe this image';
    }
 
    await sendMessage(messageText, attachments, config);
