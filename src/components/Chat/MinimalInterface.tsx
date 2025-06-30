@@ -15,7 +15,6 @@ export const MinimalResponsive: React.FC = () => {
   const { messages, isLoading, sendMessage, clearMessages } = useClaudeChat();
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
-  const [status, setStatus] = useState('Prêt à vous écouter');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [inputText, setInputText] = useState('');
   const [isDragOver, setIsDragOver] = useState(false);
