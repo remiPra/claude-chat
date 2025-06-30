@@ -1,13 +1,13 @@
 export interface Message {
   id: string;
-  role: "user" | "assistant";
+  role: 'user' | 'assistant';
   content: string;
   attachments?: Attachment[];
   timestamp: Date;
 }
 
 export interface Attachment {
-  type: "image" | "document" | "audio";
+  type: 'image' | 'document' | 'audio';
   name: string;
   url: string;
   file?: File;
@@ -15,19 +15,19 @@ export interface Attachment {
   mediaType?: string;
 }
 
+export interface ClaudeMessage {
+  role: 'user' | 'assistant';
+  content: ClaudeContent[];
+}
+
 export interface ClaudeContent {
-  type: "text" | "image";
+  type: 'text' | 'image';
   text?: string;
   source?: {
-    type: "base64";
+    type: 'base64';
     media_type: string;
     data: string;
   };
-}
-
-export interface ClaudeMessage {
-  role: "user" | "assistant";
-  content: ClaudeContent[];
 }
 
 export interface ClaudeConfig {

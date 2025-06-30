@@ -42,7 +42,9 @@ export const useClaudeChat = () => {
         timestamp: new Date(),
       };
 
+      // Le TTS automatique sera déclenché par l'useEffect dans MinimalInterface
       setMessages(prev => [...prev, assistantMessage]);
+      
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erreur inconnue';
       setError(errorMessage);
