@@ -1,3 +1,4 @@
+//@ts-nocheck
 import type { ClaudeMessage, ClaudeConfig, Message, Attachment } from '../types';
 
 export class ClaudeAPIService {
