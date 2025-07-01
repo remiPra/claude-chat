@@ -35,3 +35,6 @@ export interface ClaudeConfig {
   maxTokens: number;
   systemPrompt?: string;
 }
+
+// 🟢 NOUVEAU : Types pour TTS
+export type TTSProvider = 'kokoro' | 'gemini';

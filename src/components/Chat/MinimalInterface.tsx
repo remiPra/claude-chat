@@ -1,8 +1,13 @@
+//@ts-nocheck
 import React, { useState, useRef, useEffect } from 'react';
 import { Mic, Square, Send, Image, X, Volume2, VolumeX } from 'lucide-react';
 import { useClaudeChat } from '../../hooks/useClaudeChat';
 import { useKokoroTTS } from '../../hooks/useKokoroTTS';
 import { KokoroTTSControls } from './KokoroTTSControls';
+import { TTSSelector } from './TTSSelector';
+import { GeminiTTSService } from '../../services/geminiTTS';
+import { useTTS } from '../../contexts/TTSContext';
+
 
 interface Attachment {
  type: 'image' | 'document' | 'audio';
@@ -15,8 +20,12 @@ interface Attachment {
 
 export const MinimalResponsive: React.FC = () => {
  const { messages, isLoading, sendMessage, clearMessages } = useClaudeChat();
- const { speak, stop, isPlaying, isGenerating } = useKokoroTTS();
- 
+//  const { speak, stop, isPlaying, isGenerating } = useKokoroTTS();
+const ttsState = useTTS();
+console.log('🔍 Current TTS Provider:', ttsState.currentProvider);  // ← AJOUTE CETTE LIGNE
+console.log('🔍 Available providers:', ttsState);                    // ← AJOUTE CETTE LIGNE
+ const { speak, stop, isPlaying, isGenerating } = ttsState;
+
  // État pour contrôler l'auto-play TTS
  const [autoTTSEnabled, setAutoTTSEnabled] = useState(true);
  
@@ -101,7 +110,58 @@ export const MinimalResponsive: React.FC = () => {
      return prev.filter((_, i) => i !== index);
    });
  };
+// Ajoute ça temporairement pour tester
 
+const testRealGemini = async () => {
+  try {
+    const geminiService = new GeminiTTSService(import.meta.env.VITE_GEMINI_API_KEY);
+    const audioBlob = await geminiService.synthesizeSpeech("Hello test", "Puck");
+    
+    console.log('🔍 Blob créé:', audioBlob.size, 'bytes, type:', audioBlob.type);
+    
+    // 🟢 TEST 1: Essayer avec plusieurs méthodes
+    const audioUrl = URL.createObjectURL(audioBlob);
+    console.log('🔗 Audio URL créée:', audioUrl);
+    
+    // Méthode 1: Audio() avec gestion d'erreur détaillée
+    const audio = new Audio();
+    
+    audio.onloadeddata = () => {
+      console.log('✅ Audio chargé avec succès');
+      audio.play().catch(e => console.error('❌ Erreur play:', e));
+    };
+    
+    audio.onerror = (e) => {
+      console.error('❌ Erreur audio détaillée:', e);
+      console.error('❌ Audio error code:', audio.error?.code);
+      console.error('❌ Audio error message:', audio.error?.message);
+      
+      // 🟢 TEST 2: Essayer avec un autre type MIME
+      const newBlob = new Blob([audioBlob], { type: 'audio/mpeg' });
+      const newUrl = URL.createObjectURL(newBlob);
+      console.log('🔄 Essai avec audio/mpeg:', newUrl);
+      
+      const audio2 = new Audio(newUrl);
+      audio2.play().catch(e2 => {
+        console.error('❌ Échec audio/mpeg aussi:', e2);
+        
+        // 🟢 TEST 3: Essayer avec audio/ogg
+        const oggBlob = new Blob([audioBlob], { type: 'audio/ogg' });
+        const oggUrl = URL.createObjectURL(oggBlob);
+        const audio3 = new Audio(oggUrl);
+        audio3.play().catch(e3 => {
+          console.error('❌ Tous les formats ont échoué');
+        });
+      });
+    };
+    
+    audio.src = audioUrl;
+    audio.load(); // Force le chargement
+    
+  } catch (error) {
+    console.error('❌ Test Gemini TTS échoué:', error);
+  }
+};
  // Gestion du paste d'images (Ctrl+V)
  const handlePaste = async (e: React.ClipboardEvent) => {
    const items = e.clipboardData?.items;
@@ -216,8 +276,17 @@ formData.append('language', 'en'); // Changé de 'fr' à 'en'
    const config = {
      model: 'claude-sonnet-4-20250514',
      maxTokens: 2000,
-     systemPrompt: 'You are a helpful AI assistant. Please respond in English and adopt the role that users want you to take.',
-   };
+systemPrompt: `Hey! You're a helpful, down-to-earth assistant. Talk like you're chatting with a friend who needs help.
+
+Your vibe:
+- Speak normally, no robot-speak
+- Be warm but not overly casual  
+- When you write **bold** or *italic* text, NEVER say "asterisk" - just use the symbols
+- Skip the "As an AI assistant" stuff
+- Be direct, helpful, and keep it flowing
+- Sound human, not like a manual
+
+Just be yourself - natural, friendly, and genuinely helpful!`,   };
 
    let messageText = finalText;
    if (attachments.length > 0 && !finalText.trim()) {
@@ -268,51 +337,56 @@ formData.append('language', 'en'); // Changé de 'fr' à 'en'
        </div>
      )}
 
-     {/* Header avec contrôles TTS */}
-     <div className="bg-white border-b border-gray-200 px-4 py-3">
-       <div className="flex items-center justify-between max-w-4xl mx-auto">
-         <h1 className="text-xl font-light text-gray-700">Assistant Podologique</h1>
-         
-         <div className="flex items-center space-x-4">
-           {/* Toggle Auto-TTS */}
-           <button
-             onClick={() => setAutoTTSEnabled(!autoTTSEnabled)}
-             className={`flex items-center space-x-2 px-3 py-1 rounded-full text-sm transition-colors ${
-               autoTTSEnabled 
-                 ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' 
-                 : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-             }`}
-             title={autoTTSEnabled ? 'Désactiver auto-TTS' : 'Activer auto-TTS'}
-           >
-             {autoTTSEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-             <span>Auto TTS</span>
-           </button>
-           
-           {/* Bouton Stop TTS si en cours */}
-           {(isPlaying || isGenerating) && (
-             <button
-               onClick={stop}
-               className="flex items-center space-x-1 px-3 py-1 bg-red-100 text-red-700 rounded-full text-sm hover:bg-red-200 transition-colors"
-               title="Arrêter la lecture"
-             >
-               <Square className="w-4 h-4" />
-               <span>Stop</span>
-             </button>
-           )}
-           
-           {/* Bouton Nouveau */}
-           <button
-             onClick={() => {
-               clearMessages();
-               stop(); // Arrêter le TTS aussi
-             }}
-             className="text-gray-500 hover:text-gray-700 text-sm transition-colors"
-           >
-             Nouveau
-           </button>
-         </div>
-       </div>
-     </div>
+
+  {/* Header avec contrôles TTS */}
+<div className="bg-white border-b border-gray-200 px-4 py-3">
+  <div className="flex items-center justify-between max-w-4xl mx-auto">
+    <h1 className="text-xl font-light text-gray-700">Assistant Podologique</h1>
+    
+    <div className="flex items-center space-x-4">
+      {/* Toggle Auto-TTS */}
+      <button
+        onClick={() => setAutoTTSEnabled(!autoTTSEnabled)}
+        className={`flex items-center space-x-2 px-3 py-1 rounded-full text-sm transition-colors ${
+          autoTTSEnabled 
+            ? 'bg-green-100 text-green-700 hover:bg-green-200' 
+            : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+        }`}
+        title={autoTTSEnabled ? 'Désactiver auto-TTS' : 'Activer auto-TTS'}
+      >
+        {autoTTSEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+        
+        <span>Auto</span>
+      </button>
+      
+      {/* Nouveau selector TTS */}
+<TTSSelector ttsState={ttsState} />
+      
+      {/* Bouton Stop TTS si en cours */}
+      {(isPlaying || isGenerating) && (
+        <button
+          onClick={stop}
+          className="flex items-center space-x-1 px-3 py-1 bg-red-100 text-red-700 rounded-full text-sm hover:bg-red-200 transition-colors"
+          title="Arrêter la lecture"
+        >
+          <Square className="w-4 h-4" />
+          <span>Stop</span>
+        </button>
+      )}
+      
+      {/* Bouton Nouveau */}
+      <button
+        onClick={() => {
+          clearMessages();
+          stop();
+        }}
+        className="text-gray-500 hover:text-gray-700 text-sm transition-colors"
+      >
+        Nouveau
+      </button>
+    </div>
+  </div>
+</div>
 
      {/* Zone des messages */}
      <div className="flex-1 overflow-y-auto">
