@@ -275,7 +275,7 @@ formData.append('language', 'en'); // Changé de 'fr' à 'en'
 
    const config = {
      model: 'claude-sonnet-4-20250514',
-     maxTokens: 2000,
+     maxTokens: 800,
 systemPrompt: `Hey! You're a helpful, down-to-earth assistant. Talk like you're chatting with a friend who needs help.
 
 Your vibe:
