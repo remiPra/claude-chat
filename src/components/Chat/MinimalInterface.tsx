@@ -7,7 +7,8 @@ import { KokoroTTSControls } from './KokoroTTSControls';
 import { TTSSelector } from './TTSSelector';
 import { GeminiTTSService } from '../../services/geminiTTS';
 import { useTTS } from '../../contexts/TTSContext';
-
+import { useGoogleCalendar } from '../../hooks/useGoogleCalendar';
+import { Calendar, CalendarPlus } from 'lucide-react';
 
 interface Attachment {
  type: 'image' | 'document' | 'audio';
@@ -22,6 +23,7 @@ export const MinimalResponsive: React.FC = () => {
  const { messages, isLoading, sendMessage, clearMessages } = useClaudeChat();
 //  const { speak, stop, isPlaying, isGenerating } = useKokoroTTS();
 const ttsState = useTTS();
+const calendar = useGoogleCalendar();
 console.log('🔍 Current TTS Provider:', ttsState.currentProvider);  // ← AJOUTE CETTE LIGNE
 console.log('🔍 Available providers:', ttsState);                    // ← AJOUTE CETTE LIGNE
  const { speak, stop, isPlaying, isGenerating } = ttsState;
@@ -342,11 +344,150 @@ Just be yourself - natural, friendly, and genuinely helpful!`,   };
 <div className="bg-white border-b border-gray-200 px-4 py-3">
   <div className="flex items-center justify-between max-w-4xl mx-auto">
     <h1 className="text-xl font-light text-gray-700">Assistant Podologique</h1>
+    // Dans MinimalInterface.tsx, ajoute ça APRÈS le header et AVANT la zone des messages
+
+{/* 🧪 ZONE DE TEST TEMPORAIRE - à supprimer plus tard */}
+<div className="bg-yellow-50 border-b border-yellow-200 p-4">
+  <div className="max-w-4xl mx-auto">
+    <h3 className="text-sm font-semibold text-yellow-800 mb-3">🧪 Tests Google Calendar</h3>
     
-    <div className="flex items-center space-x-4">
-      {/* Toggle Auto-TTS */}
+    <div className="flex flex-wrap gap-3">
+      {/* Test 1: Status connexion */}
+      <div className="text-sm">
+        Status: <span className={calendar.isConnected ? 'text-green-600' : 'text-red-600'}>
+          {calendar.isConnected ? '✅ Connecté' : '❌ Déconnecté'}
+        </span>
+      </div>
+
+      {/* Test 2: Bouton connexion/déconnexion */}
+      {!calendar.isConnected ? (
+        <button
+          onClick={() => {
+            console.log('🔐 Tentative de connexion...');
+            calendar.login();
+          }}
+          className="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600"
+        >
+          🔐 Se connecter
+        </button>
+      ) : (
+        <button
+          onClick={() => {
+            console.log('🔌 Déconnexion...');
+            calendar.logout();
+          }}
+          className="px-3 py-1 bg-red-500 text-white rounded text-sm hover:bg-red-600"
+        >
+          🔌 Déconnecter
+        </button>
+      )}
+
+      {/* Test 3: Charger événements */}
+      {calendar.isConnected && (
+        <button
+          onClick={async () => {
+            console.log('📅 Chargement des événements...');
+            try {
+              await calendar.getEvents();
+              console.log('✅ Événements chargés:', calendar.events);
+            } catch (error) {
+              console.error('❌ Erreur:', error);
+            }
+          }}
+          disabled={calendar.isLoading}
+          className="px-3 py-1 bg-green-500 text-white rounded text-sm hover:bg-green-600 disabled:opacity-50"
+        >
+          📅 Charger événements ({calendar.events.length})
+        </button>
+      )}
+
+      {/* Test 4: Afficher événements */}
+      {calendar.events.length > 0 && (
+        <button
+          onClick={() => {
+            console.log('📋 Liste des événements:');
+            calendar.events.forEach((event, i) => {
+              console.log(`${i + 1}. ${event.summary} - ${event.start?.dateTime || event.start?.date}`);
+            });
+          }}
+          className="px-3 py-1 bg-purple-500 text-white rounded text-sm hover:bg-purple-600"
+        >
+          📋 Afficher dans console ({calendar.events.length})
+        </button>
+      )}
+    </div>
+
+    {/* Affichage simple des événements */}
+    {calendar.events.length > 0 && (
+      <div className="mt-4 p-3 bg-white rounded border">
+        <h4 className="text-sm font-semibold mb-2">🗓️ Prochains événements:</h4>
+        <div className="space-y-1">
+          {calendar.events.slice(0, 3).map((event, i) => (
+            <div key={i} className="text-sm text-gray-700">
+              • <strong>{event.summary || 'Sans titre'}</strong>
+              {event.start?.dateTime && (
+                <span className="text-gray-500 ml-2">
+                  {new Date(event.start.dateTime).toLocaleString('fr-FR')}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    )}
+
+    {/* Erreurs */}
+    {calendar.error && (
+      <div className="mt-2 text-sm text-red-600 bg-red-50 p-2 rounded">
+        ❌ {calendar.error}
+      </div>
+    )}
+  </div>
+</div>
+   <div className="flex items-center space-x-4">
+  {/* 🟢 NOUVEAU : Boutons Google Calendar */}
+  {!calendar.isConnected ? (
+    <button
+      onClick={() => calendar.login()}
+      className="flex items-center space-x-2 px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm hover:bg-blue-200 transition-colors"
+      title="Se connecter à Google Calendar"
+    >
+      <Calendar className="w-4 h-4" />
+      <span>Connecter Agenda</span>
+    </button>
+  ) : (
+    <div className="flex items-center space-x-2">
       <button
-        onClick={() => setAutoTTSEnabled(!autoTTSEnabled)}
+        onClick={calendar.getEvents}
+        disabled={calendar.isLoading}
+        className="flex items-center space-x-1 px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm hover:bg-green-200 transition-colors disabled:opacity-50"
+        title="Voir mes événements"
+      >
+        <Calendar className="w-4 h-4" />
+        <span>Agenda ({calendar.events.length})</span>
+      </button>
+      
+      <button
+        onClick={() => console.log('🟡 TODO: Créer événement')}
+        className="flex items-center space-x-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-sm hover:bg-blue-200 transition-colors"
+        title="Créer un événement"
+      >
+        <CalendarPlus className="w-4 h-4" />
+      </button>
+      
+      <button
+        onClick={calendar.logout}
+        className="text-gray-500 hover:text-gray-700 text-xs transition-colors"
+        title="Déconnecter"
+      >
+        ✕
+      </button>
+    </div>
+  )}
+
+  {/* Toggle Auto-TTS */}
+  <button
+    onClick={() => setAutoTTSEnabled(!autoTTSEnabled)}
         className={`flex items-center space-x-2 px-3 py-1 rounded-full text-sm transition-colors ${
           autoTTSEnabled 
             ? 'bg-green-100 text-green-700 hover:bg-green-200' 
