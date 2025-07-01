@@ -1,13 +1,17 @@
 //@ts-nocheck
-import { useState, useCallback } from 'react';
-import { ClaudeAPIService } from '../services/claudeAPI';
-import { googleCalendarService } from '../services/googleCalendar';
-import type { Message, ClaudeConfig, Attachment } from '../types';
+import { useState, useCallback } from "react";
+import { ClaudeAPIService } from "../services/claudeAPI";
+import { googleCalendarService } from "../services/googleCalendar";
+import type { Message, ClaudeConfig, Attachment } from "../types";
 
 export const useClaudeChat = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+ const [waitingForDeleteDetails, setWaitingForDeleteDetails] = useState(false);
+const [waitingForDeleteConfirmation, setWaitingForDeleteConfirmation] = useState(false);
+const [waitingForDeleteChoice, setWaitingForDeleteChoice] = useState(false);
+const [foundEventsToDelete, setFoundEventsToDelete] = useState<any[]>([]);
 
   const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
   const claudeService = new ClaudeAPIService(apiKey);
@@ -15,40 +19,54 @@ export const useClaudeChat = () => {
   // 🆕 DÉTECTION : Mots-clés pour lire l'agenda
   const detectCalendarKeywords = (text: string): boolean => {
     const keywords = [
-      'agenda', 'rendez-vous', 'rdv', 'planning', 'événements', 
-      'événement', 'calendar', 'calendrier', 'rendezvous'
+      // Français
+      "agenda",
+      "calendrier",
+      "planning",
+      "rendez-vous",
+      "rdv",
+      "événements",
+      "événement",
+      // Anglais
+      "calendar",
+      "schedule",
+      "appointment",
+      "appointments",
+      "meeting",
+      "meetings",
+      "events",
+      "event",
     ];
-    
+
     const lowerText = text.toLowerCase();
-    return keywords.some(keyword => lowerText.includes(keyword));
+    return keywords.some((keyword) => lowerText.includes(keyword));
   };
 
-  // 🆕 DÉTECTION : Mots-clés pour créer un événement
-  const detectCreateEventKeywords = (text: string): boolean => {
-  const createKeywords = [
+  // 🆕 DÉTECTION : Ajouter un événement
+  const detectAddEventKeywords = (text: string): boolean => {
+    const lowerText = text.toLowerCase();
+
     // Français
-    'ajoute', 'crée', 'planifie', 'programme', 'réserve', 
-    'bloque', 'prends', 'mets', 'organise', 'fixe',
+    const frenchPatterns = [
+      "ajoute un événement",
+      "ajouter événement",
+      "ajoute événement",
+      "ajoute un rdv",
+      "ajouter rdv",
+      "ajoute rdv",
+    ];
+
     // Anglais
-    'add', 'create', 'schedule', 'plan', 'book', 
-    'set', 'make', 'organize', 'arrange'
-  ];
-  
-  const eventKeywords = [
-    // Français
-    'rdv', 'rendez-vous', 'rendezvous', 'événement', 'événements',
-    'consultation', 'séance', 'réunion',
-    // Anglais  
-    'appointment', 'meeting', 'event', 'session', 'consultation'
-  ];
-  
-  const lowerText = text.toLowerCase();
-  
-  const hasCreateWord = createKeywords.some(keyword => lowerText.includes(keyword));
-  const hasEventWord = eventKeywords.some(keyword => lowerText.includes(keyword));
-  
-  return hasCreateWord && hasEventWord;
-};
+    const englishPatterns = [
+      "add an event",
+      "add event",
+      "create an event",
+      "create event",
+    ];
+
+    const allPatterns = [...frenchPatterns, ...englishPatterns];
+    return allPatterns.some((pattern) => lowerText.includes(pattern));
+  };
 
   // 🆕 FONCTION : Extraire les infos d'un événement avec Claude
   const extractEventInfo = async (text: string): Promise<any> => {
@@ -85,16 +103,20 @@ Exemple:
 }
 `;
 
-      const extractionMessages = [{
-        role: 'user' as const,
-        content: [{
-          type: 'text' as const,
-          text: extractionPrompt
-        }]
-      }];
+      const extractionMessages = [
+        {
+          role: "user" as const,
+          content: [
+            {
+              type: "text" as const,
+              text: extractionPrompt,
+            },
+          ],
+        },
+      ];
 
       const extraction = await claudeService.sendMessage(extractionMessages, {
-        model: 'claude-sonnet-4-20250514',
+        model: "claude-sonnet-4-20250514",
         maxTokens: 300,
       });
 
@@ -103,11 +125,10 @@ Exemple:
       if (jsonMatch) {
         return JSON.parse(jsonMatch[0]);
       }
-      
-      throw new Error('Impossible d\'extraire les informations de l\'événement');
-      
+
+      throw new Error("Impossible d'extraire les informations de l'événement");
     } catch (error) {
-      console.error('❌ Erreur extraction événement:', error);
+      console.error("❌ Erreur extraction événement:", error);
       throw error;
     }
   };
@@ -117,37 +138,40 @@ Exemple:
     try {
       // Construire les dates de début et fin
       const startDateTime = new Date(`${eventInfo.date}T${eventInfo.time}:00`);
-      const endDateTime = new Date(startDateTime.getTime() + (eventInfo.duration * 60000));
+      const endDateTime = new Date(
+        startDateTime.getTime() + eventInfo.duration * 60000
+      );
 
       const event = {
         summary: eventInfo.title,
-        description: eventInfo.description || '',
+        description: eventInfo.description || "",
         start: {
           dateTime: startDateTime.toISOString(),
-          timeZone: 'Europe/Paris'
+          timeZone: "Europe/Paris",
         },
         end: {
           dateTime: endDateTime.toISOString(),
-          timeZone: 'Europe/Paris'
-        }
+          timeZone: "Europe/Paris",
+        },
       };
 
       const createdEvent = await googleCalendarService.createEvent(event);
-      
-      const formattedDate = startDateTime.toLocaleDateString('fr-FR', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
+
+      const formattedDate = startDateTime.toLocaleDateString("fr-FR", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
       });
 
       return `\n\n✅ **Événement créé avec succès !**\n\n📅 **${eventInfo.title}**\n🕐 ${formattedDate}\n⏱️ Durée: ${eventInfo.duration} minutes\n\nL'événement a été ajouté à votre Google Calendar.`;
-      
     } catch (error) {
-      console.error('❌ Erreur création événement:', error);
-      return `\n\n❌ **Erreur lors de la création de l'événement:** ${error instanceof Error ? error.message : 'Erreur inconnue'}`;
+      console.error("❌ Erreur création événement:", error);
+      return `\n\n❌ **Erreur lors de la création de l'événement:** ${
+        error instanceof Error ? error.message : "Erreur inconnue"
+      }`;
     }
   };
 
@@ -155,35 +179,36 @@ Exemple:
   const getCalendarEvents = async (): Promise<string> => {
     try {
       const events = await googleCalendarService.getEvents(10);
-      
+
       if (events.length === 0) {
         return "\n\n📅 **Agenda :** Aucun événement trouvé dans votre calendrier.";
       }
 
       let calendarText = "\n\n📅 **Voici vos prochains rendez-vous :**\n\n";
-      
+
       events.forEach((event, index) => {
-        const title = event.summary || 'Sans titre';
-        let dateTime = '';
-        
+        const title = event.summary || "Sans titre";
+        let dateTime = "";
+
         if (event.start?.dateTime) {
           const date = new Date(event.start.dateTime);
-          dateTime = date.toLocaleDateString('fr-FR', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
+          dateTime = date.toLocaleDateString("fr-FR", {
+            weekday: "long",
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
           });
         } else if (event.start?.date) {
           const date = new Date(event.start.date);
-          dateTime = date.toLocaleDateString('fr-FR', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric'
-          }) + ' (toute la journée)';
+          dateTime =
+            date.toLocaleDateString("fr-FR", {
+              weekday: "long",
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+            }) + " (toute la journée)";
         }
 
         calendarText += `**${index + 1}.** ${title}\n`;
@@ -191,95 +216,131 @@ Exemple:
         if (event.location) {
           calendarText += `📍 ${event.location}\n`;
         }
-        calendarText += '\n';
+        calendarText += "\n";
       });
 
       return calendarText;
     } catch (error) {
-      console.error('❌ Erreur récupération agenda:', error);
+      console.error("❌ Erreur récupération agenda:", error);
       return "\n\n📅 **Agenda :** Impossible de récupérer vos événements pour le moment.";
     }
   };
 
-  const sendMessage = useCallback(async (
-    content: string,
-    attachments: Attachment[] = [],
-    config: ClaudeConfig
-  ) => {
-    if (!content.trim() && attachments.length === 0) return;
+  const sendMessage = useCallback(
+    async (
+      content: string,
+      attachments: Attachment[] = [],
+      config: ClaudeConfig
+    ) => {
+      if (!content.trim() && attachments.length === 0) return;
 
-    setError(null);
-    
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: 'user',
-      content,
-      attachments,
-      timestamp: new Date(),
-    };
+      setError(null);
 
-    const updatedMessages = [...messages, userMessage];
-    setMessages(updatedMessages);
-    setIsLoading(true);
+      const userMessage: Message = {
+        id: Date.now().toString(),
+        role: "user",
+        content,
+        attachments,
+        timestamp: new Date(),
+      };
 
-    try {
-      let enhancedContent = content;
-      let actionPerformed = false;
+      const updatedMessages = [...messages, userMessage];
+      setMessages(updatedMessages);
+      setIsLoading(true);
 
-      // 🆕 PRIORITÉ 1 : Créer un événement
-      if (detectCreateEventKeywords(content)) {
-        console.log('🆕 Création d\'événement détectée...');
-        try {
-          const eventInfo = await extractEventInfo(content);
-          console.log('📋 Infos extraites:', eventInfo);
-          const creationResult = await createCalendarEvent(eventInfo);
-          enhancedContent = content + creationResult;
-          actionPerformed = true;
-        } catch (error) {
-          console.error('❌ Erreur création:', error);
-          enhancedContent = content + `\n\n❌ Impossible de créer l'événement: ${error instanceof Error ? error.message : 'Erreur inconnue'}`;
+      try {
+        let enhancedContent = content;
+        let actionPerformed = false;
+
+        // 🔍 DEBUG
+        console.log("🔍 Message reçu:", content);
+        console.log("🔍 Détection add event:", detectAddEventKeywords(content));
+        console.log("🔍 État waitingForEventDetails:", waitingForEventDetails);
+
+        // 🔍 PRIORITÉ 1 : Si on attend les détails d'un événement
+        if (waitingForEventDetails) {
+          console.log("📝 Traitement des détails d'événement...");
+          try {
+            const eventInfo = await extractEventInfo(content);
+            const creationResult = await createCalendarEvent(eventInfo);
+            enhancedContent = creationResult;
+            setWaitingForEventDetails(false);
+            actionPerformed = true;
+          } catch (error) {
+            console.error("❌ Erreur création:", error);
+            enhancedContent = `❌ Impossible de créer l'événement: ${
+              error instanceof Error ? error.message : "Erreur inconnue"
+            }`;
+            setWaitingForEventDetails(false);
+            actionPerformed = true;
+          }
         }
+        // 🆕 PRIORITÉ 2 : Détecter "ajouter événement"
+        else if (detectAddEventKeywords(content)) {
+          console.log("🆕 Demande d'ajout d'événement détectée...");
+          const isEnglish =
+            content.toLowerCase().includes("add") ||
+            content.toLowerCase().includes("create");
+          enhancedContent = isEnglish
+            ? "OK, I'm listening! Tell me your event details."
+            : "OK, je t'écoute ! Dis-moi les détails de ton événement.";
+          setWaitingForEventDetails(true);
+          actionPerformed = true;
+        }
+        // 🟢 PRIORITÉ 3 : Afficher l'agenda
+        else if (detectCalendarKeywords(content)) {
+          console.log("📅 Lecture agenda détectée (FR/EN)...");
+          const calendarData = await getCalendarEvents();
+          enhancedContent = content + calendarData;
+          actionPerformed = true;
+        }
+
+        // 🟢 SI on a fait une action (agenda/événement), on n'envoie PAS à Claude
+        if (actionPerformed) {
+          // Créer directement la réponse sans passer par Claude
+          const assistantMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            role: "assistant",
+            content: enhancedContent,
+            timestamp: new Date(),
+          };
+          setMessages((prev) => [...prev, assistantMessage]);
+        } else {
+          // 🟢 SINON, on envoie à Claude normalement
+          const claudeMessages = ClaudeAPIService.prepareMessages([
+            ...updatedMessages.slice(0, -1),
+            { ...userMessage, content: enhancedContent },
+          ]);
+
+          const response = await claudeService.sendMessage(claudeMessages, config);
+
+          const assistantMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            role: "assistant",
+            content: response,
+            timestamp: new Date(),
+          };
+
+          setMessages((prev) => [...prev, assistantMessage]);
+        }
+      } catch (err) {
+        const errorMessage =
+          err instanceof Error ? err.message : "Erreur inconnue";
+        setError(errorMessage);
+
+        const errorMsg: Message = {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: `❌ Erreur: ${errorMessage}`,
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, errorMsg]);
+      } finally {
+        setIsLoading(false);
       }
-      
-      // PRIORITÉ 2 : Lire l'agenda (si pas de création)
-      else if (detectCalendarKeywords(content)) {
-        console.log('🔍 Lecture agenda détectée...');
-        const calendarData = await getCalendarEvents();
-        enhancedContent = content + calendarData;
-        actionPerformed = true;
-      }
-
-      const claudeMessages = ClaudeAPIService.prepareMessages([
-        ...updatedMessages.slice(0, -1),
-        { ...userMessage, content: enhancedContent }
-      ]);
-      
-      const response = await claudeService.sendMessage(claudeMessages, config);
-
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: response,
-        timestamp: new Date(),
-      };
-
-      setMessages(prev => [...prev, assistantMessage]);
-      
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Erreur inconnue';
-      setError(errorMessage);
-      
-      const errorMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: `❌ Erreur: ${errorMessage}`,
-        timestamp: new Date(),
-      };
-      setMessages(prev => [...prev, errorMsg]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [messages, claudeService]);
+    },
+    [messages, claudeService]
+  );
 
   const clearMessages = useCallback(() => {
     setMessages([]);

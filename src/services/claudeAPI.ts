@@ -41,6 +41,7 @@ export class ClaudeAPIService {
     }
 
     const data = await response.json();
+    
     return data.content[0].text;
   }
 
